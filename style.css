@@ -1,0 +1,12 @@
+body {
+    background-color: #c0b0a0;
+}
+div.instrBox {
+	max-width: 796px;
+	border: 2px solid green;
+	font-family:"Courier New";
+   	font-size: 12px;
+	-webkit-user-select: none;  /* Chrome all / Safari all */
+  	-moz-user-select: none;     /* Firefox all */
+  	-ms-user-select: none;  
+}

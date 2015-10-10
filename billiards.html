@@ -1,0 +1,110 @@
+<html>
+  
+  <head>
+    <title>Billiards</title>
+    <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
+    <link rel="stylesheet" href="graphics.css">
+    
+    <script type="text/javascript" src="common/MV.js"></script>
+    <script type="text/javascript" src="common/webgl-utils.js"></script>
+    <script type="text/javascript" src="common/initShaders.js"></script>
+
+    <script type="text/javascript" src="source/billiards.js"></script>
+    <script type="text/javascript" src="source/textures.js"></script>
+    <script type="text/javascript" src="source/controls.js"></script>
+    <script type="text/javascript" src="source/math.js"></script>
+    <script type="text/javascript" src="source/camera.js"></script>
+    <script type="text/javascript" src="source/graphics.js"></script>
+    <script type="text/javascript" src="source/physics.js"></script>
+    <script type="text/javascript" src="source/ball.js"></script>
+    <script type="text/javascript" src="source/cue.js"></script>
+    <script type="text/javascript" src="source/table.js"></script>
+    <script type="text/javascript" src="source/arrow.js"></script>
+    
+    <script id="monolithic.vert" type="text/glsl">
+      attribute vec3 vert;
+      attribute vec2 UV;
+      attribute vec3 norm;
+
+      uniform mat4 viewProjMat, modelMat;
+      uniform vec3 cameraPos, lightPos;
+
+      varying vec2 texCoord;
+      varying vec3 cameraNormal;
+      varying vec3 worldNormal;
+      varying vec3 lightNormal;
+
+      void main () {
+        vec3 worldPos = vec3(modelMat * vec4(vert, 1.0));        
+        texCoord = UV;   
+             
+        worldNormal = vec3 (modelMat * vec4(norm, 0.0));        
+        cameraNormal = cameraPos - worldPos;
+        lightNormal = lightPos - worldPos;
+        
+        gl_Position = viewProjMat * vec4(worldPos, 1.0);
+      }
+    </script>
+
+    <script id="monolithic.frag" type="text/glsl">
+      precision mediump float;
+
+      varying vec2 texCoord;
+      varying vec3 cameraNormal;
+      varying vec3 worldNormal;
+      varying vec3 lightNormal;
+      
+      uniform sampler2D texture;
+      uniform vec3 texSplitter; // [0] = horiz. step [1] = verti step [2] = which panel
+      
+      vec2 calcTexturePanelCoordinates () {
+        float howManyPanelsPerRow = 1.0 / texSplitter.x;
+        return vec2(
+          texCoord.x * texSplitter.x +
+            texSplitter.x * mod(texSplitter.z, howManyPanelsPerRow),
+          texCoord.y * texSplitter.y +
+            texSplitter.y * (1.0 / texSplitter.y - 1.0 - floor(texSplitter.z / howManyPanelsPerRow)));
+      }
+
+      void main () {
+        vec2 realTexCoord = calcTexturePanelCoordinates();
+        vec3 diffuseColor = texture2D(texture, realTexCoord).rgb;
+        vec3 specColor    = vec3(0.9, 0.8, 0.55);
+        // specular power is encoded in texture's normalized alpha channel
+        // later scaled to a range of 0 - 64 (see below)
+        float specPower   = texture2D(texture, realTexCoord).a;
+        
+        vec3 nSurface = normalize(worldNormal);
+        vec3 nCamera = normalize(cameraNormal);
+        vec3 nLight = normalize(lightNormal);        
+        
+        // apply correct-ish diffuse lighting by scaling diffuse color value
+        diffuseColor *=
+          dot (nSurface, nLight) * 0.6 
+          + diffuseColor * 0.4; // ambient diffuse light level: 0.4 of full
+        
+        // apply some attenuation to the diffuse (moody cubic falloff)
+        diffuseColor *= 1.0 / pow(length(lightNormal) * 0.24, 3.0);
+          
+        // apply sort-of-ok specular lighting by scaling specular color value
+        specColor *= specPower * // this first factor is to dim the highlight if power is low
+          pow(max(dot(reflect(-nLight, nSurface), nCamera), 0.0), specPower * 64.0);
+        
+        // fragment color is the sum of scaled diffuse and specular values
+        gl_FragColor = vec4(diffuseColor + specColor, 1.0);        
+      }
+    </script>
+
+  </head>
+  
+  <body>
+    <canvas id="gl-canvas" style="border: none;" width="800" height="600"></canvas>
+    <div class="instrBox">
+      <p>
+      Instructions: Click-drag to shoot, Right-click-drag to rotate view, scroll to zoom.
+      You must wait until all balls have stopped moving  before shooting again.
+      </p>
+    </div>
+  </body>
+  
+</html>
