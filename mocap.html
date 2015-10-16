@@ -1,11 +1,9 @@
 <!DOCTYPE html>
 <html>
   <head>
-  <title>Butterface</title>
+  <title>ShikaShikaKaboom</title>
   <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1">
   <link rel="stylesheet" href="style.css">
-
-
   
   <script src="./common/webgl-utils.js"></script>
   <script src="./common/initShaders.js"></script>
@@ -25,8 +23,8 @@
   <script src="./source/ball.js"></script>
   <script src="./source/ballTex.js"></script>
   <script src="./source/floor.js"></script>
+  <script src="./source/stick.js"></script>
   <script src="./source/sky.js"></script>
-
 
   <script id="sky.vert" type="text/glsl">
     attribute vec2 vPos;
@@ -47,79 +45,55 @@
   </script>
 
 
-  <script id="monolithic.vert" type="text/glsl">
+  <script id="glassy.vert" type="text/glsl">
     attribute vec3 vert;
-    attribute vec2 UV;
     attribute vec3 norm;
 
     uniform mat4 viewProjMat, modelMat;
-    uniform vec3 cameraPos, lightPos;
+    uniform vec3 cameraPos;
 
-    varying vec2 texCoord;
     varying vec3 cameraNormal;
     varying vec3 worldNormal;
-    varying vec3 lightNormal;
 
     void main () {
-      vec3 worldPos = vec3(modelMat * vec4(vert, 1.0));        
-      texCoord = UV;   
+      vec3 worldPos = vec3(modelMat * vec4(vert, 1.0));
            
       worldNormal = vec3 (modelMat * vec4(norm, 0.0));        
       cameraNormal = cameraPos - worldPos;
-      lightNormal = lightPos - worldPos;
       
       gl_Position = viewProjMat * vec4(worldPos, 1.0);
     }
   </script>
 
-  <script id="monolithic.frag" type="text/glsl">
+  <script id="glassy.frag" type="text/glsl">
     precision mediump float;
 
-    varying vec2 texCoord;
     varying vec3 cameraNormal;
     varying vec3 worldNormal;
-    varying vec3 lightNormal;
     
-    uniform sampler2D texture;
-    uniform vec3 texSplitter; // [0] = horiz. step [1] = verti step [2] = which panel
+    uniform samplerCube samp;
     uniform vec3 lightDir;
-    
-    vec2 calcTexturePanelCoordinates () {
-      float howManyPanelsPerRow = 1.0 / texSplitter.x;
-      return vec2(
-        texCoord.x * texSplitter.x +
-          texSplitter.x * mod(texSplitter.z, howManyPanelsPerRow),
-        texCoord.y * texSplitter.y +
-          texSplitter.y * (1.0 / texSplitter.y - 1.0 - floor(texSplitter.z / howManyPanelsPerRow)));
-    }
+    uniform vec3 glassColor;
+    uniform float refrIndex;
 
     void main () {
-      vec2 realTexCoord = calcTexturePanelCoordinates();
-      vec3 diffuseColor = texture2D(texture, realTexCoord).rgb;
-      vec3 specColor    = vec3(0.9, 0.8, 0.55);
-      // specular power is encoded in texture's normalized alpha channel
-      // later scaled to a range of 0 - 64 (see below)
-      float specPower   = texture2D(texture, realTexCoord).a;
-      
+
+      vec3 specColor = vec3(0.9, 0.8, 0.55);      
       vec3 nSurface = normalize(worldNormal);
       vec3 nCamera = normalize(cameraNormal);
-      vec3 nLight = normalize(lightNormal);
 
-      // apply some attenuation
-      //float attenuationFactor = 1.0 / pow(length(lightNormal) * 0.24, 2.0);
-      
-      // apply correct-ish diffuse lighting by scaling diffuse color value
-      diffuseColor *=
-        dot (nSurface, lightDir) * 0.6 // lightDir was nLight
-        + diffuseColor * 0.4; // ambient diffuse light level: 0.4 of full
-        
-      // apply sort-of-ok specular lighting by scaling specular color value
-      specColor *= specPower * // this first factor is to dim the highlight if power is low
-        pow(max(dot(reflect(-lightDir, nSurface), nCamera), 0.0), specPower * 64.0);  // lightDir was nLight
+      vec3 refractVec = refract(-nCamera, nSurface, refrIndex);
+      float refractSpec = pow(max(dot(refractVec, lightDir), 0.0), 32.0);
+      float reflectRatio = 1.0 - dot(nSurface, nCamera);
+      vec3 diffuseColor = textureCube(samp, reflect(-nCamera, nSurface)).xyz * reflectRatio + 
+                          textureCube(samp, refractVec).xyz * (1.0 - reflectRatio);
 
-      //diffuseColor *= attenuationFactor;
-      
-      // fragment color is the sum of scaled diffuse and specular values
+      diffuseColor += specColor * refractSpec * (1.0 - reflectRatio);
+      diffuseColor -= glassColor;
+
+      specColor *= (0.4 + reflectRatio * 0.8) *
+        pow(max(dot(reflect(-lightDir, nSurface), nCamera), 0.0), 256.0);
+
       gl_FragColor = vec4(diffuseColor + specColor, 1.0);        
     }
   </script>
@@ -135,7 +109,7 @@
     </canvas>
     <div class="instrBox">
       <p>
-      Instructions: Click-drag to rotate view, scroll to zoom. Press F to cycle background.
+      Instructions: Choose a BVH file if you like, click-drag to rotate view, scroll to zoom. Press space to play/pause animation, press F to cycle background, press C to cycle colors. Credits for cube-maps (background images) go to <a href="http://www.humus.name/index.php?page=Textures">Humus</a>
       </p>
     </div>
   </body>

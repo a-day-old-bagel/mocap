@@ -1,4 +1,6 @@
 var controls = {
+  mouseSense: -0.005,
+  zoomSense: 0.05,
   keyIsPressed: [],
   discardEvent: function(e) {
     return false;
@@ -8,12 +10,12 @@ var controls = {
   },
   mouseCamPan: function(e) {
     if (e.buttons & 1) { // if left click held
-      camera.rotateTheta(-0.005 * e.movementX);
-      camera.rotatePhi(-0.005 * e.movementY);
+      camera.rotateTheta(controls.mouseSense * e.movementX);
+      camera.rotatePhi(controls.mouseSense * e.movementY);
     }
   },
   mouseWheelZoom: function(e) {
-    camera.applyZoom(0.02 * e.deltaY);
+    camera.applyZoom(controls.zoomSense * e.deltaY);
     return false;
   },
   handleKeyDown: function(e) {
@@ -25,9 +27,14 @@ var controls = {
         controls.keyIsPressed[e.keyCode - 37] = true;
         return false; // Don't scroll the page!
       case 32: // spacebar
-        break;
+        physics.toggleAnim();
+        return false; // Don't scroll the page!;
       case "F".charCodeAt(0): // F or f
         graphics.cycleSky();
+        break;
+      case "C".charCodeAt(0): // F or f
+        graphics.cycleObjColor(ball);
+        graphics.cycleObjColor(floor);
         break;
       default:
         // To see what the code for a certain key is, uncomment this line,
@@ -64,16 +71,16 @@ var controls = {
   },
   handleKeys: function(dt) {
     if (this.keyIsPressed[0]) { // left
-      camera.rotateTheta(0.005 * dt);
+      camera.rotateTheta(controls.mouseSense * dt);
     }
     if (this.keyIsPressed[1]) { // up
-      camera.applyZoom(-0.02 * dt);
+      camera.applyZoom(controls.zoomSense * -dt);
     }
     if (this.keyIsPressed[2]) { // right
-      camera.rotateTheta(-0.005 * dt);
+      camera.rotateTheta(controls.mouseSense * -dt);
     }
     if (this.keyIsPressed[3]) { // down
-      camera.applyZoom(0.02 * dt);
+      camera.applyZoom(controls.zoomSense * dt);
     }
   },
   setUpEvents: function(canvas) {

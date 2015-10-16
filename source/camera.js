@@ -1,7 +1,7 @@
 var camera = {
   prop_fovY: 50,
-  prop_near: 0.1,
-  prop_far: 100,
+  prop_near: 1.0,
+  prop_far: 1000,
   prop_aspectY: 1,
   prop_aspectX: 1,
   vec_eye: vec3(),
@@ -20,8 +20,8 @@ var camera = {
   ang_phi_max: 1.15, // -0.15
   ang_phi_min: -1.3,
   zoom_dist: 5,
-  zoom_dist_max: 60.0, // 4.5
-  zoom_dist_min: 0.5, //0.2
+  zoom_dist_max: 80.0, // 4.5
+  zoom_dist_min: 5.0, //0.2
   zoom_target: 5,
   zoom_speed: 0.004,
   phys_last_dt: 1.0,
@@ -34,18 +34,20 @@ var camera = {
   zoomedFocus: undefined,
   zoomedFTarget: undefined,
   zoomedFOld: undefined,
-  zoomedFSpeed: 0.004,
+  zoomedFSpeed: 4.0,
   is_movingZoomedF: false,
 
   calcCamVectors: function() {
-    // focus resides somewhere between cue ball and table center
-    var farThresh = this.zoom_dist_max - this.zoom_dist_min;
-    var zoomDist = this.zoom_dist - this.zoom_dist_min;
-    // so we're going to interpolate along a cosine curve
-    var interp = Math.cos((zoomDist / farThresh) * Math.PI) * 0.5 + 0.5;
-    this.vec_focus = vec3(this.zoomedFocus[0] * interp,
-                     this.zoomedFocus[1] * interp,
-                     this.zoomedFocus[2] * interp);
+    // // focus resides somewhere between cue ball and table center
+    // var farThresh = this.zoom_dist_max - this.zoom_dist_min;
+    // var zoomDist = this.zoom_dist - this.zoom_dist_min;
+    // // so we're going to interpolate along a cosine curve
+    // var interp = Math.cos((zoomDist / farThresh) * Math.PI) * 0.5 + 0.5;
+    // this.vec_focus = vec3(this.zoomedFocus[0] * interp,
+    //                  this.zoomedFocus[1] * interp,
+    //                  this.zoomedFocus[2] * interp);
+
+    this.vec_focus = this.zoomedFocus;
     // now decide where the eye is...
     var x = 0.0;
     var y = 0.0;

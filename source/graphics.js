@@ -5,70 +5,185 @@ var graphics = {
   shdr_prog: undefined,
   shdr_unif_matVP: undefined,
   shdr_unif_matM: undefined,
-  shdr_unif_tex: undefined,
-  shdr_unif_split: undefined,
+  shdr_unif_samp: undefined,
   shdr_unif_cPos: undefined,
   shdr_unif_lPos: undefined,
   shdr_unif_lDir: undefined,
+  shdr_unif_gCol: undefined,
   shdrSky_prog: undefined,
   shdrSky_unif_invMat: undefined,
   shdrSky_unif_sampler: undefined,
   width: undefined,
   height: undefined,
+  sky: undefined,
+  skyTex: undefined,
   whichSky: 0,
+  mStack: [],
 
   render: function() {
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
+    gl.clear(gl.DEPTH_BUFFER_BIT);    
     camera.updateVPMat();
-
     gl.useProgram(this.shdr_prog);
     gl.uniform3f(this.shdr_unif_cPos, camera.vec_eye[0],
       camera.vec_eye[1], camera.vec_eye[2]);
     gl.uniformMatrix4fv(this.shdr_unif_matVP, gl.FALSE, flatten(camera.mat_vp));
-    ball.updateMats();
-    this.drawObj(ball);
-    //this.drawObj(floor);
+
+    gl.uniform3f(this.shdr_unif_gCol, ball.colors[ball.colorCounter][0],
+      ball.colors[ball.colorCounter][1], ball.colors[ball.colorCounter][2]); 
+    gl.uniform1f(this.shdr_unif_refr, ball.refrIndex);
+    this.drawObjMatStack(ball);
+    
+    gl.uniform3f(this.shdr_unif_gCol, floor.colors[floor.colorCounter][0],
+      floor.colors[floor.colorCounter][1], floor.colors[floor.colorCounter][2]);
+    gl.uniform1f(this.shdr_unif_refr, floor.refrIndex);
+    this.drawObj(floor);
 
     gl.useProgram(this.shdrSky_prog);
     this.drawSky(this.sky);
   },
 
-  drawSky: function(obj) {
-    gl.activeTexture(gl.TEXTURE0 + obj.texUnit);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, obj.texture);
-    gl.uniform1i(this.shdrSky_unif_sampler, obj.texUnit);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
+  drawSky: function() {
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.skyVertexBuffer);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    var comp = translate(-camera.vec_eye[0], -camera.vec_eye[1], -camera.vec_eye[2])
+    //var comp = translate(-camera.vec_eye[0], -camera.vec_eye[1], -camera.vec_eye[2])
     var mat = camera.getVP_inverse();
-    mat = mult(comp, mat);
+    //mat = mult(comp, mat);
     gl.uniformMatrix4fv(this.shdrSky_unif_invMat, false, flatten(mat));
 
-    gl.drawArrays(gl.TRIANGLES, 0, obj.triCount);
+    gl.drawArrays(gl.TRIANGLES, 0, this.skyVertCount);
   },
 
-  drawObj: function(obj) {
-    gl.activeTexture(gl.TEXTURE0 + obj.texUnit);
-    gl.bindTexture(gl.TEXTURE_2D, obj.texture);
-    gl.uniform1i(this.shdr_unif_tex, obj.texUnit);
+  drawObjMatStackRecurse: function(obj, segment) {
+    // this.mStack.push(
+    //   mult(
+    //     mult(
+    //       this.mStack[this.mStack.length - 1],
+    //       // this.rotationMatRequested(
+    //       //   physics.bvhChannels[segment.channelOffset + 0],
+    //       //   physics.bvhChannels[segment.channelOffset + 1],
+    //       //   physics.bvhChannels[segment.channelOffset + 2]
+    //       // )
 
+    //       // mat4()
+
+    //       translate(segment.offsets[0], segment.offsets[1], segment.offsets[2])
+    //     ),
+    //     // translate(segment.offsets[0], segment.offsets[1], segment.offsets[2])
+
+    //     // this.rotationMatRequested(
+    //     //   physics.bvhChannels[segment.channelOffset + 0],
+    //     //   physics.bvhChannels[segment.channelOffset + 1],
+    //     //   physics.bvhChannels[segment.channelOffset + 2]
+    //     // )
+
+    //     mat4()
+    //   )
+    // );
+
+    this.mStack.push(
+      mult(
+        this.mStack[this.mStack.length - 1],
+        translate(segment.offsets[0], segment.offsets[1], segment.offsets[2])  
+      )
+    );
+ 
+    gl.uniformMatrix4fv(this.shdr_unif_matM, gl.FALSE,
+      flatten(this.mStack[this.mStack.length - 1]));
+    gl.drawArrays(gl.TRIANGLES, 0, obj.triCount);
+
+    if (segment.channels != 0) {
+      this.mStack.push(
+        mult(
+          this.mStack[this.mStack.length - 1],
+          this.rotationMatRequested(
+            segment.channels, 0,
+            physics.bvhChannels[segment.channelOffset + 0],
+            physics.bvhChannels[segment.channelOffset + 1],
+            physics.bvhChannels[segment.channelOffset + 2]
+          )        
+        )
+      );
+      var i;
+      for (i = 0; i < segment.children.length; ++i) {
+        this.drawObjMatStackRecurse(obj, segment.children[i]);
+      }
+      this.mStack.pop();
+    } else {
+      var i;
+      for (i = 0; i < segment.children.length; ++i) {
+        this.drawObjMatStackRecurse(obj, segment.children[i]);
+      }
+    }
+
+    this.mStack.pop();
+  },
+
+  drawObjMatStack: function(obj) {
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.uvBuffer);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    
+    var i;
+    var newFocus = vec3();
+    try {
+      for (i = 0; i < physics.bvh.roots.length; ++i) {
+        this.mStack.push(
+          mult(
+            translate(
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 0],
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 1],
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 2]
+            ),
+            this.rotationMatRequested(
+              physics.bvh.roots[i].channels, 3,
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 3],
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 4],
+              physics.bvhChannels[physics.bvh.roots[i].channelOffset + 5]
+            )
+          )
+        );
+        var p;
+        for (p = 0; p < physics.bvh.roots[i].children.length; ++p) {
+          this.drawObjMatStackRecurse(obj, physics.bvh.roots[i].children[p]);
+        }
+        // this.drawObjMatStackRecurse(obj, physics.bvh.roots[i]);
+        this.mStack.pop();
+        newFocus = add(newFocus, [
+            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 0]),
+            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 1]),
+            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 2])
+          ])
+      }
+      if (i > 1) {
+        var k;
+        for (k = 0; k < i; ++k) {
+          newFocus[k] /= i;
+        }
+      }
+
+      camera.changeZoomFocus([newFocus[0], newFocus[1], newFocus[2]]);
+      // camera.zoomedFocus = newFocus;
+      // camera.state_oldViewMat = true;
+    } catch(err) {
+      physics.resetStuff();
+      physics.beginAnim();
+    }
+  },
+
+  drawObj: function(obj) {
+    gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
-    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
 
     for (i = 0; i < obj.mat_model.length; ++i) {
       if (obj.isActive[i]) {
         gl.uniformMatrix4fv(this.shdr_unif_matM, gl.FALSE,
           flatten(obj.mat_model[i]));
-        gl.uniform3f(this.shdr_unif_split, obj.tex_split[0],
-          obj.tex_split[1], obj.tex_which[i]);
         gl.drawArrays(gl.TRIANGLES, 0, obj.triCount);
       }
     }
@@ -76,20 +191,7 @@ var graphics = {
 
   initSky: function(skyObj) {
     this.sky = skyObj;
-    this.sky.texUnit = 1;
-    this.sky.texture = this.loadCubeMap(this.sky.cubeMap);
-
-    gl.useProgram(this.shdr_prog);
-    nLightDir = normalize(this.sky.lightDir);
-    gl.uniform3f(this.shdr_unif_lDir, nLightDir[0], nLightDir[1], nLightDir[2]);
-
-    this.sky.vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sky.vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.sky.vertices),
-      gl.STATIC_DRAW);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-    this.sky.triCount = this.sky.vertices.length / 2;
+    this.loadCubeMap(this.sky.cubeMap);
   },
 
   initObj: function(obj) {
@@ -97,45 +199,45 @@ var graphics = {
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.vertices),
       gl.STATIC_DRAW);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-
-    obj.uvBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.uvBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.uvs),
-      gl.STATIC_DRAW);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
 
     obj.normalBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.normals),
       gl.STATIC_DRAW);
-    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
 
     obj.triCount = obj.vertices.length / 3;
   },
 
-  loadTextureBase64String: function(dataString, textureUnit) {
-    var texture = gl.createTexture();
-    var image = new Image();
-    image.onload = function() {
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE,
-        image);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    };
-    image.src = 'data:image/png;base64,' + dataString;
-    return texture;
+  rotationMatRequested: function(channels, offset, one, two, three) {
+    var firstRot;
+    if (channels[0 + offset] == 'Zrotation') {
+      firstRot = rotateZ(one);
+      if (channels[1 + offset] == 'Yrotation') {                    // ZYX
+        return mult(mult(firstRot, rotateY(two)), rotateX(three));
+      } else {                                                      // ZXY
+        return mult(mult(firstRot, rotateX(two)), rotateY(three));
+      }
+    } else if (channels[0 + offset] == 'Xrotation') {
+      firstRot = rotateX(one);
+      if (channels[1 + offset] == 'Yrotation') {                    // XYZ
+        return mult(mult(rotateZ(three), rotateY(two)), firstRot);
+      } else {                                                      // XZY
+        return mult(mult(rotateY(three), rotateZ(two)), firstRot);
+      }
+    } else if (channels[0 + offset] == 'Yrotation') {
+      firstRot = rotateY(one);
+      if (channels[1 + offset] == 'Xrotation') {                    // YXZ
+        return mult(mult(rotateZ(three), rotateX(two)), firstRot);
+      } else {                                                      // YZX
+        return mult(mult(rotateX(three), rotateZ(two)), firstRot);
+      }
+    } else {
+      console.log("ERROR: unrecognized rotation : " + channels);
+      return -1;
+    }
   },
 
   loadCubeMap: function(base) {
-    var texture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, texture);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     var faces = [["posx.jpg", gl.TEXTURE_CUBE_MAP_POSITIVE_X],
                  ["negx.jpg", gl.TEXTURE_CUBE_MAP_NEGATIVE_X],
@@ -156,12 +258,21 @@ var graphics = {
           if (load_counter == 6)
           {
             gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
+
+            gl.useProgram(graphics.shdrSky_prog);
+            gl.bindTexture(gl.TEXTURE_CUBE_MAP, graphics.skyTex);
+            gl.uniform1i(graphics.shdrSky_unif_sampler, graphics.skyTex);
+
+            gl.useProgram(graphics.shdr_prog);
+            var nLightDir = normalize(graphics.sky.lightDir);
+            gl.uniform3f(graphics.shdr_unif_lDir, nLightDir[0],
+              nLightDir[1], nLightDir[2]);
+            gl.uniform1i(graphics.shdr_unif_samp, graphics.skyTex);
           }
         }
-      }(texture, face, image);
+      }(this.skyTex, face, image);
       image.src = base + '/' + faces[i][0];
     }
-    return texture;
   },
 
   cycleSky: function() {
@@ -170,6 +281,12 @@ var graphics = {
       this.whichSky = 0;
     }
     this.initSky(skies[this.whichSky]);
+  },
+
+  cycleObjColor: function(obj) {
+    if (++obj.colorCounter >= obj.colors.length) {
+      obj.colorCounter = 0;
+    }  
   },
 
   init: function(canvas) {
@@ -193,15 +310,15 @@ var graphics = {
     gl.enable(gl.DEPTH_TEST);
 
     // Load Shaders
-    this.shdr_prog = initShaders(gl, 'monolithic.vert', 'monolithic.frag');
+    this.shdr_prog = initShaders(gl, 'glassy.vert', 'glassy.frag');
     if (this.shdr_prog != -1) {
       this.shdr_unif_matVP = gl.getUniformLocation(this.shdr_prog, 'viewProjMat');
       this.shdr_unif_matM = gl.getUniformLocation(this.shdr_prog, 'modelMat');
-      this.shdr_unif_tex = gl.getUniformLocation(this.shdr_prog, 'texture');
-      this.shdr_unif_split = gl.getUniformLocation(this.shdr_prog, 'texSplitter');
+      this.shdr_unif_samp = gl.getUniformLocation(this.shdr_prog, 'samp');
       this.shdr_unif_cPos = gl.getUniformLocation(this.shdr_prog, 'cameraPos');
-      this.shdr_unif_lPos = gl.getUniformLocation(this.shdr_prog, 'lightPos');
-      this.shdr_unif_lDir = gl.getUniformLocation(this.shdr_prog, 'lightDir');      
+      this.shdr_unif_refr = gl.getUniformLocation(this.shdr_prog, 'refrIndex');
+      this.shdr_unif_lDir = gl.getUniformLocation(this.shdr_prog, 'lightDir');
+      this.shdr_unif_gCol = gl.getUniformLocation(this.shdr_prog, 'glassColor');
     } else {
       console.log("MONO SHADER FAIL!");
     }
@@ -214,10 +331,26 @@ var graphics = {
       console.log("SKY SHADER FAIL!");
     }
 
-    // At most 3 attributes per vertex will be used in any shader.
+    // At most 2 attributes per vertex will be used in any shader.
     gl.enableVertexAttribArray(0);
     gl.enableVertexAttribArray(1);
-    gl.enableVertexAttribArray(2);
+
+    // only one texture will be used in this project at a time, so all this
+    // can be done just once.
+    gl.activeTexture(gl.TEXTURE0);
+    this.skyTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.skyTex);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+    // same with this
+    this.skyVertexBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.skyVertexBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1,   3, -1,   -1, 3]),
+      gl.STATIC_DRAW);
+    this.skyVertCount = 3;
 
     // Configure Camera
     camera.setAspectX(canvas.width);
@@ -225,18 +358,9 @@ var graphics = {
     camera.zoomedFocus = [0, 0, 0];
     camera.zoomedFTarget = camera.zoomedFocus;
 
-    // Configure Lighting
-    gl.useProgram(this.shdr_prog);
-    gl.uniform3f(this.shdr_unif_lPos, 0.0, 4.0, 0.0);
-
-    ball.texUnit = 0; // gl.TEXTURE0;
-    ball.texture = this.loadTextureBase64String(ballTex, ball.texUnit);
-    this.initObj(ball);
-
-    floor.texUnit = ball.texUnit;
-    floor.texture = ball.texture;
-    this.initObj(floor);
-
+    // Set up vertex buffers and the sky
     this.initSky(skies[this.whichSky]);
+    this.initObj(ball);    
+    this.initObj(floor);
   }
 };

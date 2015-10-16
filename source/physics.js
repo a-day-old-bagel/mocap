@@ -1,7 +1,13 @@
 var physics = {
   oldTime: performance.now(),
-  currentBVH: undefined,
-
+  animTime: undefined,
+  animMaxTime: undefined,
+  pausedTime: undefined,
+  bvh: undefined,
+  bvhChannels: undefined,
+  animHasStarted: false,
+  animIsRunning: false,
+  animSpeed: 1.0,
 
   tick: function() {
     this.newTime = performance.now();
@@ -9,38 +15,75 @@ var physics = {
 
     controls.handleKeys(dt);
     camera.tickShmooze(dt);
+    if (this.animIsRunning) {
+      var animLoopTime = this.newTime - this.animTime;
+      if (animLoopTime > this.animMaxTime) {
+        do {
+          animLoopTime -= this.animMaxTime;
+        } while (animLoopTime > this.animMaxTime)        
+        this.animTime = this.newTime - animLoopTime;
+      }
+      if (this.animSpeed >= 1.0) {
+        this.setChannelDataNearest(animLoopTime);
+      } else {
+        this.setChannelDataInterpolate(animLoopTime);
+      }      
+    }
 
     this.oldTime = this.newTime;
   },
 
-  setUpBalls: function() { // move balls into starting triangle
-    var triPosZ = -0.5;
-    var spacingZ = 0.15; // modify this one to change spacing
-    var halfSpcX = spacingZ * 0.55;
-    ball.position[0] = [0, 0];
-    ball.position[1] = vec2(halfSpcX * 0, triPosZ - spacingZ * 0);
-    ball.position[2] = vec2(halfSpcX * 2, triPosZ - spacingZ * 4);
-    ball.position[3] = vec2(halfSpcX * -2, triPosZ - spacingZ * 4);
-    ball.position[4] = vec2(halfSpcX * -4, triPosZ - spacingZ * 4);
-    ball.position[5] = vec2(halfSpcX * 3, triPosZ - spacingZ * 3);
-    ball.position[6] = vec2(halfSpcX * -2, triPosZ - spacingZ * 2);
-    ball.position[7] = vec2(halfSpcX * -1, triPosZ - spacingZ * 3);
-    ball.position[8] = vec2(halfSpcX * 0, triPosZ - spacingZ * 2);
-    ball.position[9] = vec2(halfSpcX * 2, triPosZ - spacingZ * 2);
-    ball.position[10] = vec2(halfSpcX * -1, triPosZ - spacingZ * 1);
-    ball.position[11] = vec2(halfSpcX * 1, triPosZ - spacingZ * 1);
-    ball.position[12] = vec2(halfSpcX * 1, triPosZ - spacingZ * 3);
-    ball.position[13] = vec2(halfSpcX * -3, triPosZ - spacingZ * 3);
-    ball.position[14] = vec2(halfSpcX * 0, triPosZ - spacingZ * 4);
-    ball.position[15] = vec2(halfSpcX * 4, triPosZ - spacingZ * 4);
-    for (i = 0; i < 16; ++i) {
-      ball.mat_oldRot[i] = rotateX(90);
+  beginAnim: function() {
+    this.animTime = performance.now();
+    this.animIsRunning = true;
+    this.animHasStarted = true;
+  },
+
+  pauseAnim: function() {
+    this.pausedTime = performance.now();
+    this.animIsRunning = false;
+  },
+
+  resumeAnim: function() {
+    this.animTime += performance.now() - this.pausedTime;
+    this.animIsRunning = true;
+  },
+
+  toggleAnim: function() {
+    if (this.animHasStarted) {
+      if (this.animIsRunning) {
+        this.pauseAnim();
+      } else {
+        this.resumeAnim();
+      }
+    } else {
+      this.beginAnim();
     }
   },
 
-  /**
-  * Parses a BVH file and places the result in the bvh variable.
-  */
+  setChannelDataNearest: function(time) {
+    this.bvhChannels =
+      this.bvh.frames[Math.floor(((time) * 0.001) / this.bvh.frameTime)];
+  },
+
+  setChannelDataInterpolate: function(time) {
+    var frameT = ((time) * 0.001) / this.bvh.frameTime;
+    var frame0 = Math.floor(frameT);
+    frameT = frameT - frame0;
+    var i;
+    for (i = 0; i < this.bvh.numChannels; ++i) {
+      this.bvhChannels[i] = this.bvh.frames[fram0][i] +
+        (this.bvh.frames[frame0 + 1][i] - this.bvh.frames[frame0][i]) * frameT;
+    }
+  },
+
+  resetStuff: function() {
+    this.bvhChannels = new Array();
+    this.animIsRunning = false;
+    this.animHasStarted = false;
+    this.setChannelDataNearest(0);
+  },
+
   parseNewBVH: function(input) {
     var antlr4 = require('./antlr4/index');
     var BVHLexer = require('./parser/BVHLexer');
@@ -55,19 +98,23 @@ var physics = {
     parser.buildParseTrees = true;
     var tree = parser.mocap();
 
-    this.currentBVH = new BVH();
-    antlr4.tree.ParseTreeWalker.DEFAULT.walk(this.currentBVH, tree);
+    this.bvh = new BVH();
+    antlr4.tree.ParseTreeWalker.DEFAULT.walk(this.bvh, tree);
 
-    // TODO: add any initialization code upon loading a BVH file
-    console.log(this.currentBVH);
+    this.animMaxTime = this.bvh.frameTime * this.bvh.frames.length * 1000;
+    this.resetStuff();
+
+    console.log(this.bvh.toString());
   },
 
   init: function() {
-    this.setUpBalls();
 
-    // Parse a default file.
-    // TODO: change this to testData1 when you're ready to start rendering
-    // animation. These strings are defined in test1.bvh.js and test2.bvh.js.
-    this.parseNewBVH(testData2);
+    // resize balls
+    var i;
+    for (i = 0; i < ball.vertices.length; ++i) {
+      ball.vertices[i] *= 15;
+    }
+
+    this.parseNewBVH(testData1);
   }
 };
