@@ -15,7 +15,6 @@ var graphics = {
   shdrSky_unif_sampler: undefined,
   width: undefined,
   height: undefined,
-  whichSky: 0,
 
   render: function() {
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    
@@ -27,26 +26,7 @@ var graphics = {
     gl.uniformMatrix4fv(this.shdr_unif_matVP, gl.FALSE, flatten(camera.mat_vp));
     ball.updateMats();
     this.drawObj(ball);
-    //this.drawObj(floor);
-
-    gl.useProgram(this.shdrSky_prog);
-    this.drawSky(this.sky);
-  },
-
-  drawSky: function(obj) {
-    gl.activeTexture(gl.TEXTURE0 + obj.texUnit);
-    gl.bindTexture(gl.TEXTURE_CUBE_MAP, obj.texture);
-    gl.uniform1i(this.shdrSky_unif_sampler, obj.texUnit);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-    var comp = translate(-camera.vec_eye[0], -camera.vec_eye[1], -camera.vec_eye[2])
-    var mat = camera.getVP_inverse();
-    mat = mult(comp, mat);
-    gl.uniformMatrix4fv(this.shdrSky_unif_invMat, false, flatten(mat));
-
-    gl.drawArrays(gl.TRIANGLES, 0, obj.triCount);
+    this.drawObj(floor);
   },
 
   drawObj: function(obj) {
@@ -54,14 +34,19 @@ var graphics = {
     gl.bindTexture(gl.TEXTURE_2D, obj.texture);
     gl.uniform1i(this.shdr_unif_tex, obj.texUnit);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    vao_ext.bindVertexArrayOES(obj.vao);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.uvBuffer);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+    // gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
+    // gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    // gl.enableVertexAttribArray(0);
 
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
-    gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+    // gl.bindBuffer(gl.ARRAY_BUFFER, obj.uvBuffer);
+    // gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+    // gl.enableVertexAttribArray(1);
+
+    // gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
+    // gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+    // gl.enableVertexAttribArray(2);
 
     for (i = 0; i < obj.mat_model.length; ++i) {
       if (obj.isActive[i]) {
@@ -74,42 +59,30 @@ var graphics = {
     }
   },
 
-  initSky: function(skyObj) {
-    this.sky = skyObj;
-    this.sky.texUnit = 1;
-    this.sky.texture = this.loadCubeMap(this.sky.cubeMap);
-
-    gl.useProgram(this.shdr_prog);
-    nLightDir = normalize(this.sky.lightDir);
-    gl.uniform3f(this.shdr_unif_lDir, nLightDir[0], nLightDir[1], nLightDir[2]);
-
-    this.sky.vertexBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.sky.vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(this.sky.vertices),
-      gl.STATIC_DRAW);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-
-    this.sky.triCount = this.sky.vertices.length / 2;
-  },
-
   initObj: function(obj) {
+    obj.vao = vao_ext.createVertexArrayOES();
+    vao_ext.bindVertexArrayOES(obj.vao);
+
     obj.vertexBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.vertices),
       gl.STATIC_DRAW);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(0);
 
     obj.uvBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.uvBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.uvs),
       gl.STATIC_DRAW);
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(1);
 
     obj.normalBuffer = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(obj.normals),
       gl.STATIC_DRAW);
     gl.vertexAttribPointer(2, 3, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(2);
 
     obj.triCount = obj.vertices.length / 3;
   },
@@ -157,6 +130,7 @@ var graphics = {
           {
             gl.generateMipmap(gl.TEXTURE_CUBE_MAP);
           }
+          // requestAnimationFrame(draw);
         }
       }(texture, face, image);
       image.src = base + '/' + faces[i][0];
@@ -164,21 +138,19 @@ var graphics = {
     return texture;
   },
 
-  cycleSky: function() {
-    ++this.whichSky;
-    if (this.whichSky >= skies.length) {
-      this.whichSky = 0;
-    }
-    this.initSky(skies[this.whichSky]);
-  },
-
   init: function(canvas) {
     // Initialize WebGL
     gl = WebGLUtils.setupWebGL(canvas);
+    vao_ext = gl.getExtension('OES_vertex_array_object');
     if (!gl) {
       alert("WebGL isn't available");
     } else {
       console.log('WebGL Initialized.');
+    }
+    if (!vao_ext) {
+      alert('ERROR: Your browser does not support WebGL VAO extension');
+    } else {
+      console.log('VAO extension Initialized.');
     }
     this.width = canvas.width;
     this.height = canvas.height;
@@ -202,22 +174,14 @@ var graphics = {
       this.shdr_unif_cPos = gl.getUniformLocation(this.shdr_prog, 'cameraPos');
       this.shdr_unif_lPos = gl.getUniformLocation(this.shdr_prog, 'lightPos');
       this.shdr_unif_lDir = gl.getUniformLocation(this.shdr_prog, 'lightDir');      
-    } else {
-      console.log("MONO SHADER FAIL!");
     }
 
     this.shdrSky_prog = initShaders(gl, 'sky.vert', 'sky.frag');
     if (this.shdrSky_prog != -1) {
       this.shdrSky_unif_invMat = gl.getUniformLocation(this.shdrSky_prog, 'inv_mvp');
       this.shdrSky_unif_sampler = gl.getUniformLocation(this.shdrSky_prog, 'samp');
-    } else {
-      console.log("SKY SHADER FAIL!");
     }
 
-    // At most 3 attributes per vertex will be used in any shader.
-    gl.enableVertexAttribArray(0);
-    gl.enableVertexAttribArray(1);
-    gl.enableVertexAttribArray(2);
 
     // Configure Camera
     camera.setAspectX(canvas.width);
@@ -228,6 +192,7 @@ var graphics = {
     // Configure Lighting
     gl.useProgram(this.shdr_prog);
     gl.uniform3f(this.shdr_unif_lPos, 0.0, 4.0, 0.0);
+    gl.uniform3f(this.shdr_unif_lDir, 0.57735, 0.57735, -0.57735);
 
     ball.texUnit = 0; // gl.TEXTURE0;
     ball.texture = this.loadTextureBase64String(ballTex, ball.texUnit);
@@ -236,7 +201,5 @@ var graphics = {
     floor.texUnit = ball.texUnit;
     floor.texture = ball.texture;
     this.initObj(floor);
-
-    this.initSky(skies[this.whichSky]);
   }
 };

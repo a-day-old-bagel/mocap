@@ -11,18 +11,18 @@ var camera = {
   mat_proj_inv: mat4(),
   mat_view: mat4(),
   mat_vp: mat4(),
-  ang_theta: 3.0,
-  ang_theta_target: 0.3,
+  ang_theta: 0,
+  ang_theta_target: 0,
   ang_theta_speed: 0.004,
-  ang_phi: -0.15,
-  ang_phi_target: -0.4,
+  ang_phi: 0,
+  ang_phi_target: 0,
   ang_phi_speed: 0.004,
-  ang_phi_max: -0.15,
+  ang_phi_max: 1.15, // -0.15
   ang_phi_min: -1.3,
-  zoom_dist: 4.5,
-  zoom_dist_max: 4.5,
-  zoom_dist_min: 0.2,
-  zoom_target: 2.0,
+  zoom_dist: 5,
+  zoom_dist_max: 60.0, // 4.5
+  zoom_dist_min: 0.5, //0.2
+  zoom_target: 5,
   zoom_speed: 0.004,
   phys_last_dt: 1.0,
   state_oldVPMat: true,
@@ -125,6 +125,18 @@ var camera = {
       this.state_oldViewInv = false;
     }
     return this.mat_view_inv;
+  },
+  getRotMat: function() {
+    var cosX = Math.cos(this.ang_phi);
+    var sinX = Math.sin(this.ang_phi);
+    var cosY = Math.cos(-this.ang_theta);
+    var sinY = Math.sin(-this.ang_theta);
+    return mat4(
+       cosY,        0,    -sinY,        0,
+      -sinX * sinY, cosX, -sinX * cosY, 0,
+       cosX * sinY, sinX,  cosX * cosY, 0,
+       0,           0,     0,           1
+    );
   },
   tickShmooze: function(dt) {
     if (Math.abs(this.zoom_dist - this.zoom_target) > this.zoom_speed *

@@ -7,26 +7,121 @@
 
 
   
-  <script type="text/javascript" src="./common/webgl-utils.js"></script>
-  <script type="text/javascript" src="./common/initShaders.js"></script>
-  <script type="text/javascript" src="./common/MV.js"></script>
+  <script src="./common/webgl-utils.js"></script>
+  <script src="./common/initShaders.js"></script>
+  <script src="./common/MV.js"></script>
 
-  <script type="text/javascript" src="./test1.bvh.js"></script>
-  <script type="text/javascript" src="./test2.bvh.js"></script>
+  <script src="./source/test1.bvh.js"></script>
+  <script src="./source/test2.bvh.js"></script>
 
   <script src="./common/require.js"></script>
 
-  <script type="text/javascript" src="mocap.js"></script>
-  <script type="text/javascript" src="source/controls.js"></script>
-  <script type="text/javascript" src="source/math.js"></script>
-  <script type="text/javascript" src="source/camera.js"></script>
-  <script type="text/javascript" src="source/graphics.js"></script>
-  <script type="text/javascript" src="source/physics.js"></script>
+  <script src="./source/mocap.js"></script>
+  <script src="./source/controls.js"></script>
+  <script src="./source/math.js"></script>
+  <script src="./source/camera.js"></script>
+  <script src="./source/graphics.js"></script>
+  <script src="./source/physics.js"></script>
+  <script src="./source/ball.js"></script>
+  <script src="./source/ballTex.js"></script>
+  <script src="./source/floor.js"></script>
+  <script src="./source/sky.js"></script>
 
 
   <script id="sky.vert" type="text/glsl">
+    attribute vec2 vPos;
+    uniform mat4 inv_mvp;
+    varying vec3 tex_coord;
+    void main(){
+      gl_Position = vec4(vPos, 1.0, 1.0);
+      tex_coord = (inv_mvp * gl_Position).xyz;
+    }
   </script>
   <script id="sky.frag" type="text/glsl">
+    precision mediump float;
+    uniform samplerCube samp;
+    varying vec3 tex_coord;
+    void main(){
+      gl_FragColor = textureCube(samp, tex_coord);
+    }
+  </script>
+
+
+  <script id="monolithic.vert" type="text/glsl">
+    attribute vec3 vert;
+    attribute vec2 UV;
+    attribute vec3 norm;
+
+    uniform mat4 viewProjMat, modelMat;
+    uniform vec3 cameraPos, lightPos;
+
+    varying vec2 texCoord;
+    varying vec3 cameraNormal;
+    varying vec3 worldNormal;
+    varying vec3 lightNormal;
+
+    void main () {
+      vec3 worldPos = vec3(modelMat * vec4(vert, 1.0));        
+      texCoord = UV;   
+           
+      worldNormal = vec3 (modelMat * vec4(norm, 0.0));        
+      cameraNormal = cameraPos - worldPos;
+      lightNormal = lightPos - worldPos;
+      
+      gl_Position = viewProjMat * vec4(worldPos, 1.0);
+    }
+  </script>
+
+  <script id="monolithic.frag" type="text/glsl">
+    precision mediump float;
+
+    varying vec2 texCoord;
+    varying vec3 cameraNormal;
+    varying vec3 worldNormal;
+    varying vec3 lightNormal;
+    
+    uniform sampler2D texture;
+    uniform vec3 texSplitter; // [0] = horiz. step [1] = verti step [2] = which panel
+    uniform vec3 lightDir;
+    
+    vec2 calcTexturePanelCoordinates () {
+      float howManyPanelsPerRow = 1.0 / texSplitter.x;
+      return vec2(
+        texCoord.x * texSplitter.x +
+          texSplitter.x * mod(texSplitter.z, howManyPanelsPerRow),
+        texCoord.y * texSplitter.y +
+          texSplitter.y * (1.0 / texSplitter.y - 1.0 - floor(texSplitter.z / howManyPanelsPerRow)));
+    }
+
+    void main () {
+      vec2 realTexCoord = calcTexturePanelCoordinates();
+      vec3 diffuseColor = texture2D(texture, realTexCoord).rgb;
+      vec3 specColor    = vec3(0.9, 0.8, 0.55);
+      // specular power is encoded in texture's normalized alpha channel
+      // later scaled to a range of 0 - 64 (see below)
+      float specPower   = texture2D(texture, realTexCoord).a;
+      
+      vec3 nSurface = normalize(worldNormal);
+      vec3 nCamera = normalize(cameraNormal);
+      vec3 nLight = normalize(lightNormal);
+
+      // apply some attenuation
+      //float attenuationFactor = 1.0 / pow(length(lightNormal) * 0.24, 2.0);
+      
+      // apply correct-ish diffuse lighting by scaling diffuse color value
+      diffuseColor *=
+        dot (nSurface, lightDir) * 0.6 // lightDir was nLight
+        + diffuseColor * 0.4; // ambient diffuse light level: 0.4 of full
+        
+      // apply sort-of-ok specular lighting by scaling specular color value
+      specColor *= specPower * // this first factor is to dim the highlight if power is low
+        pow(max(dot(reflect(-lightDir, nSurface), nCamera), 0.0), specPower * 64.0);  // lightDir was nLight
+
+      //diffuseColor *= attenuationFactor;
+      
+      // fragment color is the sum of scaled diffuse and specular values
+      gl_FragColor = vec4(diffuseColor + specColor, 1.0);        
+    }
   </script>
 
   
@@ -35,15 +130,14 @@
   <body>
     <input type="file" id="fileInput">
     <br>
-    <canvas id="gl-canvas" width="512" height="512">
+    <canvas id="gl-canvas" width="800" height="600">
       Your browser doesn't support the HTML5 canvas element.
     </canvas>
     <div class="instrBox">
       <p>
-      Instructions: Click-drag to shoot, Right-click-drag to rotate view, scroll to zoom.
-      You must wait until all balls have stopped moving  before shooting again.
+      Instructions: Click-drag to rotate view, scroll to zoom. Press F to cycle background.
       </p>
     </div>
-    
   </body>
+
 </html>
