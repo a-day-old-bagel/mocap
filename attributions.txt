@@ -1,1 +1,7 @@
+Images (cube-maps) thanks to Humus (he does not endorse me or my project or whatever)
+
+They are licensed under this license:
+
 http://creativecommons.org/licenses/by/3.0/
+
+See image folders for more details.

@@ -19,6 +19,7 @@ var graphics = {
   skyTex: undefined,
   whichSky: 0,
   mStack: [],
+  renderLimbs: true,
 
   render: function() {
     gl.clear(gl.DEPTH_BUFFER_BIT);    
@@ -29,8 +30,7 @@ var graphics = {
     gl.uniformMatrix4fv(this.shdr_unif_matVP, gl.FALSE, flatten(camera.mat_vp));
 
     gl.uniform3f(this.shdr_unif_gCol, ball.colors[ball.colorCounter][0],
-      ball.colors[ball.colorCounter][1], ball.colors[ball.colorCounter][2]); 
-    gl.uniform1f(this.shdr_unif_refr, ball.refrIndex);
+      ball.colors[ball.colorCounter][1], ball.colors[ball.colorCounter][2]);     
     this.drawObjMatStack(ball);
     
     gl.uniform3f(this.shdr_unif_gCol, floor.colors[floor.colorCounter][0],
@@ -46,41 +46,13 @@ var graphics = {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.skyVertexBuffer);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
 
-    //var comp = translate(-camera.vec_eye[0], -camera.vec_eye[1], -camera.vec_eye[2])
     var mat = camera.getVP_inverse();
-    //mat = mult(comp, mat);
     gl.uniformMatrix4fv(this.shdrSky_unif_invMat, false, flatten(mat));
 
     gl.drawArrays(gl.TRIANGLES, 0, this.skyVertCount);
   },
 
   drawObjMatStackRecurse: function(obj, segment) {
-    // this.mStack.push(
-    //   mult(
-    //     mult(
-    //       this.mStack[this.mStack.length - 1],
-    //       // this.rotationMatRequested(
-    //       //   physics.bvhChannels[segment.channelOffset + 0],
-    //       //   physics.bvhChannels[segment.channelOffset + 1],
-    //       //   physics.bvhChannels[segment.channelOffset + 2]
-    //       // )
-
-    //       // mat4()
-
-    //       translate(segment.offsets[0], segment.offsets[1], segment.offsets[2])
-    //     ),
-    //     // translate(segment.offsets[0], segment.offsets[1], segment.offsets[2])
-
-    //     // this.rotationMatRequested(
-    //     //   physics.bvhChannels[segment.channelOffset + 0],
-    //     //   physics.bvhChannels[segment.channelOffset + 1],
-    //     //   physics.bvhChannels[segment.channelOffset + 2]
-    //     // )
-
-    //     mat4()
-    //   )
-    // );
-
     this.mStack.push(
       mult(
         this.mStack[this.mStack.length - 1],
@@ -88,43 +60,69 @@ var graphics = {
       )
     );
  
+    if (this.renderLimbs) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform1f(this.shdr_unif_refr, ball.refrIndex);
+    }
+
     gl.uniformMatrix4fv(this.shdr_unif_matM, gl.FALSE,
       flatten(this.mStack[this.mStack.length - 1]));
     gl.drawArrays(gl.TRIANGLES, 0, obj.triCount);
 
-    if (segment.channels != 0) {
-      this.mStack.push(
-        mult(
-          this.mStack[this.mStack.length - 1],
-          this.rotationMatRequested(
-            segment.channels, 0,
-            physics.bvhChannels[segment.channelOffset + 0],
-            physics.bvhChannels[segment.channelOffset + 1],
-            physics.bvhChannels[segment.channelOffset + 2]
-          )        
-        )
-      );
-      var i;
-      for (i = 0; i < segment.children.length; ++i) {
-        this.drawObjMatStackRecurse(obj, segment.children[i]);
-      }
-      this.mStack.pop();
-    } else {
-      var i;
-      for (i = 0; i < segment.children.length; ++i) {
-        this.drawObjMatStackRecurse(obj, segment.children[i]);
+    this.mStack.push(
+      mult(
+        this.mStack[this.mStack.length - 1],
+        this.rotationMatRequested(
+          segment.channels, 0,
+          physics.bvhChannels[segment.channelOffset + 0],
+          physics.bvhChannels[segment.channelOffset + 1],
+          physics.bvhChannels[segment.channelOffset + 2]
+        )        
+      )
+    );
+    var i;
+    for (i = 0; i < segment.children.length; ++i) {
+      this.drawObjMatStackRecurse(obj, segment.children[i]);
+
+      if (this.renderLimbs) {
+        this.mStack.push(
+          mult(
+            this.mStack[this.mStack.length - 1],
+            scalem(
+              segment.children[i].offsets[0],
+              segment.children[i].offsets[1],
+              segment.children[i].offsets[2]
+            )
+          )
+        );
+        gl.bindBuffer(gl.ARRAY_BUFFER, stick.vertexBuffer);
+        gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, stick.normalBuffer);
+        gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+        gl.uniformMatrix4fv(this.shdr_unif_matM, gl.FALSE,
+          flatten(this.mStack[this.mStack.length - 1]));
+        gl.uniform1f(this.shdr_unif_refr, stick.refrIndex);
+        gl.drawArrays(gl.TRIANGLES, 0, stick.triCount);
+        this.mStack.pop();
       }
     }
+
+    this.mStack.pop();
 
     this.mStack.pop();
   },
 
   drawObjMatStack: function(obj) {
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
-    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
-
-    gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
-    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+    if (!this.renderLimbs) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, obj.vertexBuffer);
+      gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, obj.normalBuffer);
+      gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 0, 0);
+      gl.uniform1f(this.shdr_unif_refr, ball.refrIndex);
+    }
     
     var i;
     var newFocus = vec3();
@@ -152,10 +150,10 @@ var graphics = {
         // this.drawObjMatStackRecurse(obj, physics.bvh.roots[i]);
         this.mStack.pop();
         newFocus = add(newFocus, [
-            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 0]),
-            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 1]),
-            parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 2])
-          ])
+        parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 0]),
+        parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 1]),
+        parseFloat(physics.bvhChannels[physics.bvh.roots[i].channelOffset + 2])
+      ])
       }
       if (i > 1) {
         var k;
@@ -165,8 +163,6 @@ var graphics = {
       }
 
       camera.changeZoomFocus([newFocus[0], newFocus[1], newFocus[2]]);
-      // camera.zoomedFocus = newFocus;
-      // camera.state_oldViewMat = true;
     } catch(err) {
       physics.resetStuff();
       physics.beginAnim();
@@ -209,31 +205,35 @@ var graphics = {
   },
 
   rotationMatRequested: function(channels, offset, one, two, three) {
-    var firstRot;
-    if (channels[0 + offset] == 'Zrotation') {
-      firstRot = rotateZ(one);
-      if (channels[1 + offset] == 'Yrotation') {                    // ZYX
-        return mult(mult(firstRot, rotateY(two)), rotateX(three));
-      } else {                                                      // ZXY
-        return mult(mult(firstRot, rotateX(two)), rotateY(three));
-      }
-    } else if (channels[0 + offset] == 'Xrotation') {
-      firstRot = rotateX(one);
-      if (channels[1 + offset] == 'Yrotation') {                    // XYZ
-        return mult(mult(rotateZ(three), rotateY(two)), firstRot);
-      } else {                                                      // XZY
-        return mult(mult(rotateY(three), rotateZ(two)), firstRot);
-      }
-    } else if (channels[0 + offset] == 'Yrotation') {
-      firstRot = rotateY(one);
-      if (channels[1 + offset] == 'Xrotation') {                    // YXZ
-        return mult(mult(rotateZ(three), rotateX(two)), firstRot);
-      } else {                                                      // YZX
-        return mult(mult(rotateX(three), rotateZ(two)), firstRot);
+    if (channels != 0) {
+      var firstRot;
+      if (channels[0 + offset] == 'Zrotation') {
+        firstRot = rotateZ(one);
+        if (channels[1 + offset] == 'Yrotation') {                    // ZYX
+          return mult(mult(firstRot, rotateY(two)), rotateX(three));
+        } else {                                                      // ZXY
+          return mult(mult(firstRot, rotateX(two)), rotateY(three));
+        }
+      } else if (channels[0 + offset] == 'Xrotation') {
+        firstRot = rotateX(one);
+        if (channels[1 + offset] == 'Yrotation') {                    // XYZ
+          return mult(mult(firstRot, rotateY(two)), rotateZ(three));
+        } else {                                                      // XZY
+          return mult(mult(firstRot, rotateZ(two)), rotateY(three));
+        }
+      } else if (channels[0 + offset] == 'Yrotation') {
+        firstRot = rotateY(one);
+        if (channels[1 + offset] == 'Xrotation') {                    // YXZ
+          return mult(mult(firstRot, rotateX(two)), rotateZ(three));
+        } else {                                                      // YZX
+          return mult(mult(firstRot, rotateZ(two)), rotateX(three));
+        }
+      } else {
+        console.log("ERROR: unrecognized rotation : " + channels);
+        return -1;
       }
     } else {
-      console.log("ERROR: unrecognized rotation : " + channels);
-      return -1;
+      return mat4();
     }
   },
 
@@ -289,6 +289,10 @@ var graphics = {
     }  
   },
 
+  toggleLimbs: function(obj) {
+    this.renderLimbs = !this.renderLimbs;
+  },
+
   init: function(canvas) {
     // Initialize WebGL
     gl = WebGLUtils.setupWebGL(canvas);
@@ -312,7 +316,8 @@ var graphics = {
     // Load Shaders
     this.shdr_prog = initShaders(gl, 'glassy.vert', 'glassy.frag');
     if (this.shdr_prog != -1) {
-      this.shdr_unif_matVP = gl.getUniformLocation(this.shdr_prog, 'viewProjMat');
+      this.shdr_unif_matVP = gl.getUniformLocation(this.shdr_prog,
+        'viewProjMat');
       this.shdr_unif_matM = gl.getUniformLocation(this.shdr_prog, 'modelMat');
       this.shdr_unif_samp = gl.getUniformLocation(this.shdr_prog, 'samp');
       this.shdr_unif_cPos = gl.getUniformLocation(this.shdr_prog, 'cameraPos');
@@ -325,8 +330,10 @@ var graphics = {
 
     this.shdrSky_prog = initShaders(gl, 'sky.vert', 'sky.frag');
     if (this.shdrSky_prog != -1) {
-      this.shdrSky_unif_invMat = gl.getUniformLocation(this.shdrSky_prog, 'inv_mvp');
-      this.shdrSky_unif_sampler = gl.getUniformLocation(this.shdrSky_prog, 'samp');
+      this.shdrSky_unif_invMat = gl.getUniformLocation(this.shdrSky_prog,
+        'inv_mvp');
+      this.shdrSky_unif_sampler = gl.getUniformLocation(this.shdrSky_prog,
+        'samp');
     } else {
       console.log("SKY SHADER FAIL!");
     }
@@ -342,7 +349,8 @@ var graphics = {
     gl.bindTexture(gl.TEXTURE_CUBE_MAP, this.skyTex);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER,
+      gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
 
     // same with this
@@ -362,5 +370,6 @@ var graphics = {
     this.initSky(skies[this.whichSky]);
     this.initObj(ball);    
     this.initObj(floor);
+    this.initObj(stick);
   }
 };

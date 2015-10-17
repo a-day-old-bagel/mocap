@@ -36,6 +36,9 @@ var controls = {
         graphics.cycleObjColor(ball);
         graphics.cycleObjColor(floor);
         break;
+      case "X".charCodeAt(0): // F or f
+        graphics.toggleLimbs();
+        break;
       default:
         // To see what the code for a certain key is, uncomment this line,
         // reload the page in the browser and press the key.
